@@ -1,0 +1,149 @@
+<!-- MainWindow.xaml -->
+<Window
+  x:Name="MainWin"
+  xmlns="https://github.com/avaloniaui"
+  xmlns:ae="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:vm="using:Loggez.UI.ViewModels"
+  xmlns:behav="using:Loggez.UI.Behaviors"
+  xmlns:conv="using:Loggez.UI.Converters"
+  x:Class="Loggez.UI.Views.MainWindow"
+  Title="Loggez"
+  Width="900" Height="600"
+  MinWidth="700" MinHeight="400"
+  x:DataType="vm:MainWindowViewModel">
+
+  <Window.Resources>
+    <conv:UtcLocalDateConverter x:Key="UtcLocalDateConverter"/>
+  </Window.Resources>
+  <Window.DataTemplates>
+    <TreeDataTemplate
+      DataType="vm:FileHitGroupViewModel"
+      ItemsSource="{Binding Hits}">
+      <TextBlock Text="{Binding FileName}" />
+    </TreeDataTemplate>
+
+    <DataTemplate DataType="vm:HitViewModel">
+      <StackPanel Orientation="Horizontal" Spacing="2">
+        <TextBlock Text="{Binding PreviewBefore}" />
+        <TextBlock Text="{Binding PreviewMatch}" Foreground="Red" />
+        <TextBlock Text="{Binding PreviewAfter}" />
+      </StackPanel>
+    </DataTemplate>
+  </Window.DataTemplates>
+
+  <Window.Styles>
+    <Style Selector="TextBox#SearchBox">
+      <Setter Property="Background" Value="#FFF"/>
+      <Setter Property="BorderBrush" Value="#CCC"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="4"/>
+      <Setter Property="Padding" Value="4"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="MenuItem MenuItem">
+      <Setter Property="Padding" Value="8,4"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Height" Value="24"/>
+    </Style> 
+  </Window.Styles>
+
+  <DockPanel>
+    <Menu DockPanel.Dock="Top">
+      <MenuItem Header="_File">
+        <MenuItem Header="_Load">
+          <MenuItem Header="Load Files…"  Command="{Binding BrowseAsync}"       />
+          <MenuItem Header="Load Folder…" Command="{Binding BrowseFolderAsync}" />
+          <MenuItem Header="Load ZIP…"    Command="{Binding BrowseZipAsync}"    />
+        </MenuItem>
+        <Separator/>
+        <MenuItem Header="E_xit" Command="{Binding ExitCommand}" />
+      </MenuItem>
+      <MenuItem Header="_Settings" Command="{Binding OpenSettingsCommand}" />
+    </Menu>
+
+    <Grid DockPanel.Dock="Top" Margin="8" IsEnabled="{Binding CanSearch}">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="3*"/>
+        <ColumnDefinition Width="Auto"/>
+      </Grid.ColumnDefinitions>
+
+      <TextBox
+        x:Name="SearchBox"
+        Grid.Column="0"
+        Watermark="Search text…"
+        Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
+        Margin="0,0,12,0"/>
+
+      <StackPanel
+        Grid.Column="1"
+        Orientation="Horizontal"
+        Spacing="6"
+        VerticalAlignment="Center"
+        Margin="0,0,12,0">
+        <TextBlock Text="From" VerticalAlignment="Center" Margin="0,0,4,0"/>
+        <CalendarDatePicker SelectedDate="{Binding FromDate,
+                                            Mode=TwoWay,
+                                            Converter={StaticResource UtcLocalDateConverter}}"
+                            Width="120">
+          <Interaction.Behaviors>
+            <behav:DayBoundaryBehavior Mode="StartOfDay"/>
+          </Interaction.Behaviors>
+        </CalendarDatePicker>
+        <TextBlock Text="to"   VerticalAlignment="Center" Margin="8,0,4,0"/> 
+        <CalendarDatePicker SelectedDate="{Binding ToDate,
+                                            Mode=TwoWay,
+                                            Converter={StaticResource UtcLocalDateConverter}}"
+                            Width="120">
+          
+          <Interaction.Behaviors>
+            <behav:DayBoundaryBehavior Mode="EndOfDay"/>
+          </Interaction.Behaviors>
+        </CalendarDatePicker>
+      </StackPanel>
+    </Grid>
+    
+    <TextBlock
+      DockPanel.Dock="Top"
+      Text="{Binding DateRangeErrorMessage}"
+      Foreground="Red"
+      Margin="8,0,8,4"
+      IsVisible="{Binding HasDateRangeError}" />
+    
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="2*" MinWidth="200"/>
+        <ColumnDefinition Width="5"/>
+        <ColumnDefinition Width="5*" MinWidth="200"/>
+      </Grid.ColumnDefinitions>
+
+      <TreeView
+        Grid.Column="0"
+        ItemsSource="{Binding FileHitGroups}"
+        SelectedItem="{Binding SelectedHit, Mode=TwoWay}"
+        HorizontalAlignment="Stretch"
+        VerticalAlignment="Stretch"/>
+
+      <GridSplitter
+        Grid.Column="1"
+        Width="5"
+        Background="Gray"
+        ShowsPreview="True"/>
+
+      <Grid Grid.Column="2">
+        <ae:TextEditor
+          x:Name="Editor"
+          IsReadOnly="True"
+          ShowLineNumbers="True"
+          VerticalScrollBarVisibility="Auto"
+          HorizontalScrollBarVisibility="Auto">
+          <Interaction.Behaviors>
+            <behav:DocumentTextBindingBehavior
+              Text="{Binding SelectedHitContent, Mode=TwoWay}"/>
+          </Interaction.Behaviors>
+        </ae:TextEditor>
+      </Grid>
+    </Grid>
+
+  </DockPanel>
+</Window>

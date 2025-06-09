@@ -1,0 +1,16 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Indexing…" Width="300" Height="100"
+        CanResize="False"
+        xmlns:vm="using:Loggez.UI.ViewModels"
+        WindowStartupLocation="CenterOwner"
+        x:Class="Loggez.UI.Views.ProgressWindow"
+        x:DataType="vm:ProgressWindowViewModel">
+    
+    <StackPanel Margin="10">
+        <TextBlock Text="{Binding Message}" Margin="0,0,0,10"/>
+        <ProgressBar Minimum="0"
+                     Maximum="{Binding Total}"
+                     Value="{Binding Completed}"/>
+    </StackPanel>
+</Window>
