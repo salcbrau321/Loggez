@@ -10,6 +10,7 @@
 
     <ItemGroup>
         <AvaloniaResource Include="Assets\**" />
+        <AvaloniaResource Include="Styles\**" />
     </ItemGroup>
 
     <ItemGroup>
@@ -30,7 +31,6 @@
         <PackageReference Include="Xaml.Behaviors.Interactivity" Version="11.3.0.10" />
         <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.0" />
     </ItemGroup>
-
     <ItemGroup>
       <Folder Include="Core\" />
     </ItemGroup>

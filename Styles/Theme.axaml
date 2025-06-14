@@ -1,0 +1,72 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <Styles.Resources>
+    <Color x:Key="LightBackground">#FFFFFF</Color>
+    <Color x:Key="SideBarBackground">#F3F3F3</Color>
+    <Color x:Key="TitleBarBackground">#F6F6F6</Color>   
+    <Color x:Key="PrimaryText">#333333</Color>
+    <Color x:Key="BorderColor">#E1E1E1</Color>
+    <Color x:Key="HoverColor">#E1E4E8</Color>
+    <Color x:Key="SelectionBackground">#CCE5FF</Color>
+    
+    <SolidColorBrush x:Key="BackgroundBrush"    Color="{StaticResource LightBackground}" />
+    <SolidColorBrush x:Key="SideBarBrush"       Color="{StaticResource SideBarBackground}" />
+    <SolidColorBrush x:Key="TitleBarBrush"      Color="{StaticResource TitleBarBackground}" />  <!-- ← Uses #F6F6F6 -->
+    <SolidColorBrush x:Key="ForegroundBrush"    Color="{StaticResource PrimaryText}" />
+    <SolidColorBrush x:Key="BorderBrush"        Color="{StaticResource BorderColor}" />
+    <SolidColorBrush x:Key="HoverBrush"         Color="{StaticResource HoverColor}" />
+    <SolidColorBrush x:Key="SelectionBrush"     Color="{StaticResource SelectionBackground}" />
+  </Styles.Resources>
+  
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{StaticResource BackgroundBrush}" />
+  </Style>
+  <Style Selector="Border#TitleBar">
+    <Setter Property="Background" Value="{StaticResource TitleBarBrush}" />
+  </Style>
+  
+  <Style Selector="TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}" />
+    <Setter Property="FontSize"   Value="13" />
+  </Style>
+  
+  <Style Selector="Button">
+    <Setter Property="Background"  Value="Transparent" />
+    <Setter Property="Foreground"  Value="{StaticResource ForegroundBrush}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Cursor"      Value="Hand" />
+  </Style>
+  <Style Selector="Button:pointerover">
+    <Setter Property="Background" Value="{StaticResource HoverBrush}" />
+  </Style>
+  <Style Selector="Button:pressed">
+    <Setter Property="Background" Value="{StaticResource SelectionBrush}" />
+  </Style>
+  
+  <Style Selector="TextBox">
+    <Setter Property="Background"          Value="{StaticResource SideBarBrush}" />
+    <Setter Property="BorderBrush"         Value="{StaticResource BorderBrush}" />
+    <Setter Property="BorderThickness"     Value="1" />
+    <Setter Property="CornerRadius"        Value="4" />
+    <Setter Property="Foreground"          Value="{StaticResource ForegroundBrush}" />
+    <Setter Property="Padding"             Value="4" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="TextBox:pointerover">
+    <Setter Property="BorderBrush" Value="{StaticResource HoverBrush}" />
+  </Style>
+  
+  <Style Selector="TreeViewItem:selected">
+    <Setter Property="Background" Value="{StaticResource SelectionBrush}" />
+  </Style>
+  
+  <Style Selector="GridSplitter">
+    <Setter Property="Background" Value="{StaticResource BorderBrush}" />
+  </Style>
+  
+  <Style Selector="CalendarDatePicker">
+    <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}" />
+  </Style>
+
+</Styles>

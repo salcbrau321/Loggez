@@ -1,6 +1,8 @@
 using System.ComponentModel;
+using Avalonia.Input;
 using Avalonia.Threading;
 using Loggez.UI.Behaviors;
+using Lucene.Net.Util.Packed;
 
 namespace Loggez.UI.Views;
 
@@ -11,6 +13,7 @@ using Loggez.UI.ViewModels;
 public partial class MainWindow : Window
 {
     private readonly SearchColorizer _searchColorizer;
+    private bool _ignoreDrag = false;
     
     public MainWindow() => this.InitializeComponent();
     
@@ -23,6 +26,28 @@ public partial class MainWindow : Window
         if (DataContext is INotifyPropertyChanged viewModel)
         {
             vm.PropertyChanged += ViewModel_PropertyChanged;
+        }
+        this.FindControl<Border>("TitleBar").PointerPressed += TitleBar_PointerPressed;
+    }
+    
+    private void TitleBar_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.ClickCount == 2 && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            _ignoreDrag = true;
+            
+            this.WindowState = this.WindowState == WindowState.Maximized
+                ? WindowState.Normal
+                : WindowState.Maximized;
+        }
+        else if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (!_ignoreDrag)
+                    BeginMoveDrag(e);
+                _ignoreDrag = false;
+            }, Avalonia.Threading.DispatcherPriority.Input);
         }
     }
     
@@ -51,11 +76,59 @@ public partial class MainWindow : Window
         Editor.TextArea.Caret.Offset = offset;
         Editor.TextArea.Caret.BringCaretToView();
     }
-    
+
     private void RefreshHighlights()
     {
         var vm = (MainWindowViewModel)DataContext;
         _searchColorizer.SearchTerm = vm.SearchQuery ?? string.Empty;
-        Editor.TextArea.TextView.Redraw();  
+        Editor.TextArea.TextView.Redraw();
+    }
+    
+    private void Resize_Right(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            BeginResizeDrag(WindowEdge.East, e);
+    }
+
+    private void Resize_Left(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            BeginResizeDrag(WindowEdge.West, e);
+    }
+
+    private void Resize_Top(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            BeginResizeDrag(WindowEdge.North, e);
+    }
+
+    private void Resize_Bottom(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            BeginResizeDrag(WindowEdge.South, e);
+    }
+    
+    private void Resize_TopLeft(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            BeginResizeDrag(WindowEdge.NorthWest, e);
+    }
+
+    private void Resize_TopRight(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            BeginResizeDrag(WindowEdge.NorthEast, e);
+    }
+
+    private void Resize_BottomLeft(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            BeginResizeDrag(WindowEdge.SouthWest, e);
+    }
+
+    private void Resize_BottomRight(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            BeginResizeDrag(WindowEdge.SouthEast, e);
     }
 }

@@ -1,12 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Data.SqlTypes;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
-using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -15,65 +13,36 @@ using Avalonia.Threading;
 using AvaloniaEdit.Document;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Lucene.Net.Analysis;
-using Lucene.Net.Analysis.Core;
-using Lucene.Net.Analysis.NGram;
-using Lucene.Net.Documents;
-using Lucene.Net.Index;
-using Lucene.Net.Search;
-using Lucene.Net.Store;
-using Lucene.Net.Util;
 using Loggez.Core.Interfaces;
 using Loggez.Core.Models;
 using Loggez.UI.Views;
-using Lucene.Net.Analysis.Miscellaneous;
-using Directory = System.IO.Directory;
 
 namespace Loggez.UI.ViewModels
 {
-    
-    public class SubstringAnalyzer : Analyzer
-    {
-        private readonly LuceneVersion _version;
-        public SubstringAnalyzer(LuceneVersion version) => _version = version;
-
-        protected override TokenStreamComponents CreateComponents(string fieldName, TextReader reader)
-        {
-            var tokenizer = new KeywordTokenizer(reader);
-            TokenStream stream = new LowerCaseFilter(_version, tokenizer);
-            stream = new NGramTokenFilter(_version, stream, 4, 25);
-            return new TokenStreamComponents(tokenizer, stream);
-        }
-    }
-
-    public class RawAnalyzer : Analyzer
-    {
-        private readonly LuceneVersion _version;
-        public RawAnalyzer(LuceneVersion version) => _version = version;
-
-        protected override TokenStreamComponents CreateComponents(string fieldName, TextReader reader)
-        {
-            var tokenizer = new KeywordTokenizer(reader);
-            var stream = new LowerCaseFilter(_version, tokenizer);
-            return new TokenStreamComponents(tokenizer, stream);
-        }
-    }
-
     public partial class MainWindowViewModel : ObservableObject
     {
         private readonly IDialogService _dialog;
-        private readonly ILogParser     _parser;
-        private readonly List<LogFile>  _logs = new();
+        private readonly IFileLoaderService _loader;
+        private readonly IIndexService _indexer;
+        private readonly IExternalOpener _opener;
         private readonly DispatcherTimer _searchDebounceTimer;
-        private readonly RAMDirectory _luceneIndex = new();
-        private readonly Analyzer _analyzer;
 
-        private IndexWriter _writer;
-        private IndexSearcher _searcher;
+        private readonly List<LogFile> _logs = new();
 
-        public ObservableCollection<string> LoadedFiles      { get; } = new();
-        public ObservableCollection<HitViewModel> Hits        { get; } = new();
+        public ObservableCollection<string> LoadedFiles { get; } = new();
+        public ObservableCollection<HitViewModel> Hits { get; } = new();
         public ObservableCollection<FileHitGroupViewModel> FileHitGroups { get; } = new();
+
+        [ObservableProperty] private string _searchQuery = "";
+        [ObservableProperty] private DateTime? _fromDate    = null;
+        [ObservableProperty] private DateTime? _toDate      = null;
+        [ObservableProperty] private HitViewModel? _selectedHit = null;
+        [ObservableProperty] private FileHitGroupViewModel? _selectedHitGroup = null;
+        [ObservableProperty] private bool _isIndexing;
+        [ObservableProperty] private bool _isIndexReady;
+        [ObservableProperty] private bool _canOpenExternal;
+        [ObservableProperty] private string _selectedHitContent = "";
+        [ObservableProperty] private TextDocument _selectedHitDocument = new TextDocument(string.Empty);
 
         public bool CanSearch => IsIndexReady && !IsIndexing;
         public bool HasDateRangeError => FromDate.HasValue && ToDate.HasValue && FromDate > ToDate;
@@ -81,29 +50,45 @@ namespace Loggez.UI.ViewModels
             ? "❗ Start date must be on or before End date."
             : "";
 
-        private TextDocument _selectedHitDocument = new("");
-        public TextDocument SelectedHitDocument
+        public MainWindowViewModel(
+            IDialogService     dialog,
+            IFileLoaderService loader,
+            IIndexService      indexer,
+            IExternalOpener    opener)
         {
-            get => _selectedHitDocument;
-            set => SetProperty(ref _selectedHitDocument, value);
+            _dialog   = dialog;
+            _loader   = loader;
+            _indexer  = indexer;
+            _opener   = opener;
+
+            _searchDebounceTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(300)
+            };
+            _searchDebounceTimer.Tick += (_, __) =>
+            {
+                _searchDebounceTimer.Stop();
+                SearchCommand.Execute(null);
+            };
         }
 
-        [ObservableProperty] private string     _searchQuery        = "";
-        [ObservableProperty] private bool       _isCaseSensitive;
-        [ObservableProperty] private DateTime?  _fromDate           = null;
-        [ObservableProperty] private DateTime?  _toDate             = null;
-        [ObservableProperty] private HitViewModel? _selectedHit     = null;
-        [ObservableProperty] private string     _selectedHitContent = "";
-        [ObservableProperty] private bool       _canOpenExternal;
-        [ObservableProperty] private FileHitGroupViewModel? _selectedHitGroup = null;
-        [ObservableProperty] private bool _isIndexing;
-        [ObservableProperty] private bool _isIndexReady;
-        
-        partial void OnSelectedHitGroupChanged(FileHitGroupViewModel? _, FileHitGroupViewModel? nv)
+        partial void OnSelectedHitGroupChanged(FileHitGroupViewModel? oldGroup, FileHitGroupViewModel? newGroup)
         {
-            if (nv?.Hits.Count > 0)
-                SelectedHit = nv.Hits[0];
+            if (newGroup?.Hits.Count > 0) SelectedHit = newGroup.Hits[0];
         }
+        
+        partial void OnIsIndexingChanged(bool oldValue, bool newValue)
+            => OnPropertyChanged(nameof(CanSearch));
+
+        partial void OnIsIndexReadyChanged(bool oldValue, bool newValue)
+            => OnPropertyChanged(nameof(CanSearch));
+        
+        partial void OnSearchQueryChanged(string oldVal, string newVal)
+        {
+            _searchDebounceTimer.Stop();
+            _searchDebounceTimer.Start();
+        }
+        
         partial void OnSelectedHitChanged(HitViewModel? _, HitViewModel? newVal)
         {
             if (newVal is null)
@@ -120,51 +105,39 @@ namespace Loggez.UI.ViewModels
                 CanOpenExternal     = true;
             }
         }
-        partial void OnSearchQueryChanged(string _, string __)
-        {
-            _searchDebounceTimer.Stop();
-            _searchDebounceTimer.Start();
-        }
-        partial void OnIsCaseSensitiveChanged(bool _, bool __) => DoSearch();
-        partial void OnFromDateChanged(DateTime? _, DateTime? __) => ValidateDates();
-        partial void OnToDateChanged(DateTime? _, DateTime? __) => ValidateDates();
-        partial void OnIsIndexingChanged(bool oldVal, bool newVal) => OnPropertyChanged(nameof(CanSearch));
-        partial void OnIsIndexReadyChanged(bool oldVal, bool newVal) => OnPropertyChanged(nameof(CanSearch));
-       
         
-        public MainWindowViewModel(IDialogService dialog, ILogParser parser)
+        partial void OnFromDateChanged(DateTime? oldVal, DateTime? newVal)
+            => SearchCommand.Execute(null);
+
+        partial void OnToDateChanged(DateTime? oldVal, DateTime? newVal)
+            => SearchCommand.Execute(null);
+
+        [RelayCommand]
+        private void MinimizeWindow()
         {
-            _dialog = dialog;
-            _parser = parser;
-
-            var substringAnalyzer = new SubstringAnalyzer(LuceneVersion.LUCENE_48);
-            var rawAnalyzer       = new RawAnalyzer(LuceneVersion.LUCENE_48);
-
-            _analyzer = new PerFieldAnalyzerWrapper(
-                substringAnalyzer,
-                new Dictionary<string, Analyzer>
-                {
-                    { "ContentRaw", rawAnalyzer }
-                }
-            );
-
-            _searchDebounceTimer = new DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(300)
-            };
-            _searchDebounceTimer.Tick += (_, __) =>
-            {
-                _searchDebounceTimer.Stop();
-                DoSearch();
-            };
+            if (Application.Current.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+                desktop.MainWindow.WindowState = WindowState.Minimized;
         }
 
-        private void MarkIndexStale()
+        [RelayCommand]
+        private void MaximizeRestoreWindow()
         {
-            IsIndexReady = false;
-            OnPropertyChanged(nameof(CanSearch));
+            if (Application.Current.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            {
+                var win = desktop.MainWindow;
+                win.WindowState = win.WindowState == WindowState.Maximized
+                    ? WindowState.Normal
+                    : WindowState.Maximized;
+            }
         }
 
+        [RelayCommand]
+        private void CloseWindow()
+        {
+            if (Application.Current.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+                desktop.Shutdown();
+        }
+        
         [RelayCommand]
         private void Clear()
         {
@@ -173,8 +146,8 @@ namespace Loggez.UI.ViewModels
             Hits.Clear();
             FileHitGroups.Clear();
             SelectedHit = null;
+            IsIndexReady = false;
             SelectedHitContent = "";
-            CanOpenExternal = false;
         }
 
         [RelayCommand]
@@ -192,80 +165,12 @@ namespace Loggez.UI.ViewModels
                 filters: new[] { "log", "txt", "zip" },
                 allowMultiple: true);
 
-            if (picks?.Length > 0)
-            {
-                var logFiles = new List<string>();
-                foreach (var path in picks)
-                {
-                    if (Path.GetExtension(path).Equals(".zip", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-                        Directory.CreateDirectory(tempDir);
-                        using var archive = ZipFile.OpenRead(path);
-                        foreach (var entry in archive.Entries
-                            .Where(e => Settings.SupportedExtensions
-                                .Contains(Path.GetExtension(e.Name), StringComparer.OrdinalIgnoreCase)))
-                        {
-                            var dest = Path.Combine(tempDir, entry.Name);
-                            entry.ExtractToFile(dest);
-                            logFiles.Add(dest);
-                        }
-                    }
-                    else
-                    {
-                        logFiles.Add(path);
-                    }
-                }
-                await LoadAndIndexFiles(logFiles.ToArray());
-            }
+            if (picks == null || picks.Length == 0)
+                return;
+
+            await LoadAndIndex(picks);
         }
-
-        [RelayCommand]
-        public async Task BrowseFolderAsync()
-        {
-            var lifetime   = (IClassicDesktopStyleApplicationLifetime)Application.Current.ApplicationLifetime;
-            var mainWindow = lifetime.MainWindow;
-            var folder     = await new OpenFolderDialog { Title = "Select log folder" }
-                                      .ShowAsync(mainWindow);
-            if (string.IsNullOrWhiteSpace(folder)) return;
-
-            var exts = Settings.SupportedExtensions;
-            var files = Directory.EnumerateFiles(folder, "*.*", SearchOption.AllDirectories)
-                                 .Where(f => exts.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
-                                 .ToArray();
-            await LoadAndIndexFiles(files);
-        }
-
-        [RelayCommand]
-        public async Task BrowseZipAsync()
-        {
-            var lifetime   = (IClassicDesktopStyleApplicationLifetime)Application.Current.ApplicationLifetime;
-            var mainWindow = lifetime.MainWindow;
-            var dlg = new OpenFileDialog
-            {
-                Title = "Select ZIP file",
-                AllowMultiple = false,
-                Filters = new List<FileDialogFilter> { new FileDialogFilter { Name = "ZIP", Extensions = new List<string> { "zip" } } }
-            };
-            var result = await dlg.ShowAsync(mainWindow);
-            if (result?.Length != 1) return;
-
-            var zipPath = result[0];
-            var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-            Directory.CreateDirectory(tempDir);
-            var logFiles = new List<string>();
-            using var archive = ZipFile.OpenRead(zipPath);
-            foreach (var entry in archive.Entries
-                .Where(e => Settings.SupportedExtensions
-                    .Contains(Path.GetExtension(e.Name), StringComparer.OrdinalIgnoreCase)))
-            {
-                var dest = Path.Combine(tempDir, entry.Name);
-                entry.ExtractToFile(dest);
-                logFiles.Add(dest);
-            }
-            await LoadAndIndexFiles(logFiles.ToArray());
-        }
-
+        
         [RelayCommand]
         public async Task OpenSettingsAsync()
         {
@@ -276,157 +181,146 @@ namespace Loggez.UI.ViewModels
             if (mainWin != null) await dlg.ShowDialog(mainWin);
             else dlg.Show();
         }
-
-        private async Task LoadAndIndexFiles(string[] files)
+        
+        [RelayCommand]
+        public async Task BrowseFolderAsync()
         {
-            MarkIndexStale();
-            IsIndexing = true;
+            var lifetime = (IClassicDesktopStyleApplicationLifetime)Application.Current.ApplicationLifetime;
+            var folder   = await new OpenFolderDialog { Title = "Select log folder" }
+                                         .ShowAsync(lifetime.MainWindow);
+            if (string.IsNullOrWhiteSpace(folder))
+                return;
+
+            await LoadAndIndex(new[] { folder });
+        }
+
+        [RelayCommand]
+        public async Task BrowseZipAsync()
+        {
+            var lifetime = (IClassicDesktopStyleApplicationLifetime)Application.Current.ApplicationLifetime;
+            var dlg = new OpenFileDialog
+            {
+                Title = "Select ZIP file",
+                AllowMultiple = false,
+                Filters = new List<FileDialogFilter>
+                {
+                    new FileDialogFilter { Name = "ZIP", Extensions = new List<string> { "zip" } }
+                }
+            };
+            var picks = await dlg.ShowAsync(lifetime.MainWindow);
+            if (picks == null || picks.Length != 1)
+                return;
+
+            await LoadAndIndex(picks);
+        }
+
+        private async Task LoadAndIndex(string[] inputs)
+        {
             _logs.Clear();
             LoadedFiles.Clear();
             Hits.Clear();
-            FileHitGroups.Clear(); 
+            FileHitGroups.Clear();
             SelectedHit = null;
-            CanOpenExternal = false;
-
-            int entryCount = 0;
-            foreach (var path in files)
+            IsIndexing  = true;
+            IsIndexReady = false;
+            SelectedHitContent = "";
+            
+            var logs = await _loader.LoadAsync(inputs);
+            foreach (var lf in logs)
             {
-                LoadedFiles.Add(Path.GetFileName(path));
-                var lf = new LogFile(path, _parser);
-                lf.Parse();
                 _logs.Add(lf);
-                entryCount += lf.Entries.Count;
+                LoadedFiles.Add(Path.GetFileName(lf.Path));
             }
-            await BuildIndex(entryCount);
-        }
+            
+            var total    = logs.Sum(l => l.Entries.Count);
+            var progVm   = new ProgressWindowViewModel(total);
+            var progress = new Progress<int>(c =>
+                Dispatcher.UIThread.Post(() => progVm.Completed = c));
+            var dlg      = new ProgressWindow { DataContext = progVm };
+            dlg.Show((Application.Current.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow);
+            
+            await _indexer.BuildIndexAsync(logs, progress, CancellationToken.None);
 
-        private async Task BuildIndex(int totalCount)
-        {
-            _writer?.Dispose();
-            var config = new IndexWriterConfig(LuceneVersion.LUCENE_48, _analyzer)
-            {
-                RAMBufferSizeMB = 256
-            };
-            _writer = new IndexWriter(_luceneIndex, config);
-
-            var progressVm = new ProgressWindowViewModel(totalCount);
-            ProgressWindow dlg = new ProgressWindow { DataContext = progressVm };
-            var owner = (Application.Current.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime) ?.MainWindow;
-            if (owner != null)
-                dlg.Show(owner);
-            else
-                dlg.Show();
-
-            await Task.Run(() =>
-            {
-                try
-                {
-                    var count = 0;
-                    foreach (var lf in _logs)
-                    foreach (var entry in lf.Entries)
-                    {
-                        _writer.AddDocument(new Document
-                        {
-                            new StringField("FullPath", lf.Path, Field.Store.YES),
-                            new Int32Field("LineNumber", entry.LineNumber,         Field.Store.YES),
-                            new TextField("ContentRaw", entry.RawLine,            Field.Store.YES),
-                            new TextField("ContentSubstr",  entry.RawLine, Field.Store.YES),
-                            new Int64Field("FileTimestamp", lf.CreatedDate.Ticks,    Field.Store.YES)
-                        });
-                        Dispatcher.UIThread.Post(() => progressVm.Completed = ++count);
-                    }
-                    _writer.Commit();
-                    _searcher = new IndexSearcher(DirectoryReader.Open(_luceneIndex));
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e);
-                    throw;
-                }
-            });
-
+            dlg.Close();
             IsIndexing = false;
             IsIndexReady = true;
-            dlg.Close();
+
+            if (!string.IsNullOrWhiteSpace(SearchQuery))
+                SearchCommand.Execute(null);
         }
 
-        private void ValidateDates()
-        {
-            OnPropertyChanged(nameof(HasDateRangeError));
-            OnPropertyChanged(nameof(DateRangeErrorMessage));
-            DoSearch();
-        }
-
-        private void DoSearch()
+        [RelayCommand(CanExecute = nameof(CanSearch))]
+        private async Task Search()
         {
             Hits.Clear();
             FileHitGroups.Clear();
 
-            if (string.IsNullOrWhiteSpace(SearchQuery) || _searcher == null)
-                return;
-
-            var term = IsCaseSensitive 
-                ? SearchQuery 
-                : SearchQuery.ToLowerInvariant();
+            var results = await _indexer.SearchAsync(SearchQuery, FromDate, ToDate);
+            var newGroups = results
+                .GroupBy(h => h.FullPath)
+                .ToDictionary(g => g.Key, g => g.ToList());
             
-            var tq = new TermQuery(new Term("ContentSubstr", term));
-            Query finalQuery = tq;
+            var prevSelectedPath = SelectedHitGroup?.FileName;
 
-            if (!HasDateRangeError && (FromDate.HasValue || ToDate.HasValue))
+            for (int i = FileHitGroups.Count - 1; i >= 0; i--)
             {
-                long min = FromDate?.Ticks ?? long.MinValue;
-                long max = ToDate?.Ticks   ?? long.MaxValue;
-                var range = NumericRangeQuery.NewInt64Range("FileTimestamp", min, max, true, true);
-                finalQuery = new BooleanQuery
+                var grp = FileHitGroups[i];
+                if (!newGroups.ContainsKey(grp.FileName))
+                    FileHitGroups.RemoveAt(i);
+            }
+
+            foreach (var kv in newGroups)
+            {
+                var path     = kv.Key;
+                var newHits  = kv.Value;
+                var existing = FileHitGroups.FirstOrDefault(f => f.FileName == path);
+
+                if (existing != null)
                 {
-                    { tq,    Occur.MUST },
-                    { range, Occur.MUST }
-                };
+                    existing.Hits.Clear();
+                    foreach (var hit in newHits)
+                        existing.Hits.Add(hit);
+                }
+                else
+                {
+                    FileHitGroups.Add(new FileHitGroupViewModel(path, newHits));
+                }
             }
 
-            var topDocs = _searcher.Search(finalQuery, _logs.Count * 1000);
-            foreach (var sd in topDocs.ScoreDocs)
+            if (prevSelectedPath != null)
             {
-                var doc        = _searcher.Doc(sd.Doc);
-                var path       = doc.Get("FullPath");
-                var lineNumber = doc.GetField("LineNumber").GetInt32Value() ?? 0;
-                var rawLine    = doc.Get("ContentSubstr");
-
-                var lf    = _logs.First(l => l.Path == path);
-                var entry = lf.Entries.First(e => e.LineNumber == lineNumber && e.RawLine == rawLine);
-                var cmp   = IsCaseSensitive 
-                          ? StringComparison.Ordinal 
-                          : StringComparison.OrdinalIgnoreCase;
-
-                Hits.Add(new HitViewModel(lf, entry, SearchQuery, cmp));
+                var want = FileHitGroups.FirstOrDefault(f => f.FileName == prevSelectedPath);
+                if (want != null)
+                {
+                    SelectedHitGroup = want;
+                    return;
+                }
             }
-
-            foreach (var grp in Hits.GroupBy(h => h.FullPath))
-                FileHitGroups.Add(new FileHitGroupViewModel(grp.Key, grp));
-
+            
             if (FileHitGroups.Count > 0)
                 SelectedHitGroup = FileHitGroups[0];
+            else
+                SelectedHitGroup = null;
         }
 
         [RelayCommand(CanExecute = nameof(CanOpenExternal))]
         private void OpenExternal()
         {
-            if (SelectedHit is null) return;
-            var cmd  = Settings.ExternalOpener;
-            var args = $"+{SelectedHit.LineNumber} \"{SelectedHit.FullPath}\"";
-            Process.Start(new ProcessStartInfo(cmd, args) { UseShellExecute = true });
+            if (SelectedHit == null) return;
+            _opener.Open(SelectedHit.FullPath, SelectedHit.LineNumber);
         }
 
         [RelayCommand]
-        private void OpenHit(HitViewModel? hit)
+        private void OpenHit(HitViewModel hit)
         {
-            if (hit is null) return;
+            if (hit == null) return;
+
             var path = hit.FullPath;
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (OperatingSystem.IsWindows())
                 Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            else if (OperatingSystem.IsLinux())
                 Process.Start("xdg-open", path);
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            else if (OperatingSystem.IsMacOS())
                 Process.Start("open", path);
             else
                 throw new PlatformNotSupportedException();
