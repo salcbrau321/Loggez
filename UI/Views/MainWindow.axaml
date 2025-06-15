@@ -6,6 +6,9 @@
   xmlns:vm="using:Loggez.UI.ViewModels"
   xmlns:behav="using:Loggez.UI.Behaviors"
   xmlns:conv="using:Loggez.UI.Converters"
+  xmlns:tabs="using:Loggez.UI.ViewModels.Tabs"
+  xmlns:search="using:Loggez.UI.ViewModels.Tabs.Search"
+  xmlns:views="using:Loggez.UI.Views.Tabs"
   x:Class="Loggez.UI.Views.MainWindow"
   Title="Loggez"
   Width="900" Height="600"
@@ -17,198 +20,148 @@
   TransparencyLevelHint="AcrylicBlur"
   x:DataType="vm:MainWindowViewModel"
   Background="Transparent">
-  
+
   <Window.Resources>
     <conv:UtcLocalDateConverter x:Key="UtcLocalDateConverter"/>
   </Window.Resources>
-  
-  <Window.DataTemplates>
-    <TreeDataTemplate
-      DataType="vm:FileHitGroupViewModel"
-      ItemsSource="{Binding Hits}">
-      <TextBlock Text="{Binding FileName}" />
-    </TreeDataTemplate>
 
-    <DataTemplate DataType="vm:HitViewModel">
-      <StackPanel Orientation="Horizontal" Spacing="2">
-        <TextBlock Text="{Binding PreviewBefore}" />
-        <TextBlock Text="{Binding PreviewMatch}" Foreground="Red" />
-        <TextBlock Text="{Binding PreviewAfter}" />
-      </StackPanel>
+  <Window.DataTemplates>
+    <!-- Solution‐Explorer templates -->
+    <TreeDataTemplate DataType="vm:SolutionFolderViewModel"
+                      ItemsSource="{Binding Children}">
+      <TextBlock Text="{Binding Name}"/>
+    </TreeDataTemplate>
+    <TreeDataTemplate DataType="vm:SolutionFileViewModel">
+      <TextBlock Text="{Binding Name}"/>
+    </TreeDataTemplate>
+    <DataTemplate DataType="search:SearchTabViewModel">
+      <views:SearchTabView/>
+    </DataTemplate>
+    <DataTemplate DataType="tabs:LogFileTabViewModel">
+      <views:LogFileTabView/>
     </DataTemplate>
   </Window.DataTemplates>
-  
+
   <Window.Styles>
     <StyleInclude Source="avares://Loggez/Styles/Theme.axaml"/>
-    
-    <Style Selector="TextBox#SearchBox">
-      <Setter Property="Background"               Value="{DynamicResource BackgroundBrush}" />
-      <Setter Property="BorderBrush"              Value="{DynamicResource BorderBrush}" />
-      <Setter Property="BorderThickness"          Value="1" />
-      <Setter Property="CornerRadius"             Value="4" />
-      <Setter Property="Padding"                  Value="4" />
-      <Setter Property="VerticalContentAlignment" Value="Center" />
-    </Style>
-
-    <Style Selector="MenuItem MenuItem">
-      <Setter Property="Padding"   Value="8,4"/>
-      <Setter Property="FontSize"  Value="12"/>
-      <Setter Property="Height"    Value="24"/>
-    </Style>
   </Window.Styles>
-  
+
   <Border
     Background="{DynamicResource BackgroundBrush}"
     BorderBrush="{DynamicResource BorderBrush}"
     BorderThickness="1"
     Margin="8">
     <Border.Effect>
-      <DropShadowEffect
-        Color="Black"
-        BlurRadius="12"
-        Opacity="0.4"/>
+      <DropShadowEffect Color="Black" BlurRadius="12" Opacity="0.4"/>
     </Border.Effect>
-
+    
     <Grid>
-      <DockPanel>
-        <Border
-          Name="TitleBar"
-          DockPanel.Dock="Top"
-          Height="32"
-          Background="{DynamicResource TitleBarBrush}">
-          <Grid
-            Height="32"
-            Background="{DynamicResource TitleBarBrush}"
-            PointerPressed="TitleBar_PointerPressed">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="Auto"/>
-              <ColumnDefinition Width="*"/>
-              <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-
-            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Spacing="4" Margin="8,0">
-              <Menu>
-                <MenuItem Header="_File">
-                  <MenuItem Header="Load Files…"  Command="{Binding BrowseAsync}"       />
-                  <MenuItem Header="Load Folder…" Command="{Binding BrowseFolderAsync}" />
-                  <MenuItem Header="Load ZIP…"    Command="{Binding BrowseZipAsync}"    />
-                  <Separator/>
-                  <MenuItem Header="E_xit"        Command="{Binding ExitCommand}"       />
-                </MenuItem>
-              </Menu>
-              <Menu>
-                <MenuItem Header="_Settings" Command="{Binding OpenSettingsCommand}" />
-              </Menu>
-            </StackPanel>
-
-            <TextBlock
-              Grid.Column="1"
-              Text="Loggez"
-              FontWeight="Bold"
-              VerticalAlignment="Center"
-              HorizontalAlignment="Center"
-              Foreground="{DynamicResource ForegroundBrush}" />
-
-            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="4" Margin="0,0,8,0">
-              <Button
-                ToolTip.Tip="Minimize"
-                Command="{Binding MinimizeWindowCommand}"
-                Width="32"
-                Height="24"
-                BorderThickness="0">
-                <Path Data="M2,12 L14,12" Stroke="{DynamicResource ForegroundBrush}" StrokeThickness="2"/>
-              </Button>
-              <Button
-                ToolTip.Tip="Maximize"
-                Command="{Binding MaximizeRestoreWindowCommand}"
-                Width="32"
-                Height="24"
-                BorderThickness="0">
-                <Path Data="M2,2 L14,2 L14,14 L2,14 Z" Stroke="{DynamicResource ForegroundBrush}" StrokeThickness="2"/>             
-              </Button>
-              <Button
-                ToolTip.Tip="Close"
-                Command="{Binding CloseWindowCommand}"
-                Width="32"
-                Height="24"
-                BorderThickness="0">
-                <Path Data="M3,3 L13,13 M3,13 L13,3" Stroke="{DynamicResource ForegroundBrush}" StrokeThickness="2"/>
-              </Button>
-            </StackPanel>
-          </Grid>
-        </Border>
-        
-        <Grid DockPanel.Dock="Top" Margin="8" IsEnabled="{Binding CanSearch}">
+    <DockPanel>
+      <Border
+        Name="TitleBar"
+        DockPanel.Dock="Top"
+        Height="32"
+        Background="{DynamicResource TitleBarBrush}"
+        PointerPressed="TitleBar_PointerPressed">
+    
+        <Grid Height="32" Background="{DynamicResource TitleBarBrush}">
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="3*"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
-
-          <TextBox
-            x:Name="SearchBox"
-            Grid.Column="0"
-            Watermark="Search text…"
-            Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
-            Margin="0,0,12,0"
-            IsEnabled="{Binding CanSearch}" />
-
-          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,12,0">
-            <TextBlock Text="From" VerticalAlignment="Center" Margin="0,0,4,0" Foreground="{DynamicResource ForegroundBrush}" />
-            <CalendarDatePicker
-              SelectedDate="{Binding FromDate, Mode=TwoWay, Converter={StaticResource UtcLocalDateConverter}}"
-              Width="120" />
-            <TextBlock Text="to" VerticalAlignment="Center" Margin="8,0,4,0" Foreground="{DynamicResource ForegroundBrush}" />
-            <CalendarDatePicker
-              SelectedDate="{Binding ToDate, Mode=TwoWay, Converter={StaticResource UtcLocalDateConverter}}"
-              Width="120" />
+          
+          <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Spacing="4" Margin="8,0">
+            <Menu>
+              <MenuItem Header="_File">
+                <MenuItem Header="Load Files…"  Command="{Binding BrowseAsync}"       />
+                <MenuItem Header="Load Folder…" Command="{Binding BrowseFolderAsync}" />
+                <MenuItem Header="Load ZIP…"    Command="{Binding BrowseZipAsync}"    />
+                <Separator/>
+                <MenuItem Header="E_xit"        Command="{Binding ExitCommand}"       />
+              </MenuItem>
+            </Menu>
+            <Menu>
+                <MenuItem Header="_New Search" Command="{Binding OpenSearchTabCommand}" />
+            </Menu>
+            <Menu>
+              <MenuItem Header="_Settings" Command="{Binding OpenSettingsCommand}" />
+            </Menu>
+          </StackPanel>
+          
+          <TextBlock
+            Grid.Column="1"
+            Text="Loggez"
+            FontWeight="Bold"
+            VerticalAlignment="Center"
+            HorizontalAlignment="Center"
+            Foreground="{DynamicResource ForegroundBrush}" />
+          
+          <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="4" Margin="0,0,8,0">
+            <Button ToolTip.Tip="Minimize" Command="{Binding MinimizeWindowCommand}" Width="32" Height="24" BorderThickness="0">
+              <Path Data="M2,12 L14,12" Stroke="{DynamicResource ForegroundBrush}" StrokeThickness="2"/>
+            </Button>
+            <Button ToolTip.Tip="Maximize" Command="{Binding MaximizeRestoreWindowCommand}" Width="32" Height="24" BorderThickness="0">
+              <Path Data="M2,2 L14,2 L14,14 L2,14 Z" Stroke="{DynamicResource ForegroundBrush}" StrokeThickness="2"/>
+            </Button>
+            <Button ToolTip.Tip="Close" Command="{Binding CloseWindowCommand}" Width="32" Height="24" BorderThickness="0">
+              <Path Data="M3,3 L13,13 M3,13 L13,3" Stroke="{DynamicResource ForegroundBrush}" StrokeThickness="2"/>
+            </Button>
           </StackPanel>
         </Grid>
-
-        <TextBlock
-          DockPanel.Dock="Top"
-          Text="{Binding DateRangeErrorMessage}"
-          Foreground="Red"
-          Margin="8,0,8,4"
-          IsVisible="{Binding HasDateRangeError}" />
-        <Grid>
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="2*" MinWidth="200"/>
-            <ColumnDefinition Width="5"/>
-            <ColumnDefinition Width="5*" MinWidth="200"/>
-          </Grid.ColumnDefinitions>
-
-          <TreeView
-            Grid.Column="0"
-            ItemsSource="{Binding FileHitGroups}"
-            SelectedItem="{Binding SelectedHit, Mode=TwoWay}" />
-
-          <GridSplitter
-            Grid.Column="1"
-            ShowsPreview="True" />
-
-          <Grid Grid.Column="2">
-            <ae:TextEditor
-              x:Name="Editor"
-              IsReadOnly="True"
-              ShowLineNumbers="True"
-              VerticalScrollBarVisibility="Auto"
-              HorizontalScrollBarVisibility="Auto">
-              <Interaction.Behaviors>
-                <behav:DocumentTextBindingBehavior Text="{Binding SelectedHitContent, Mode=TwoWay}" />
-              </Interaction.Behaviors>
-            </ae:TextEditor>
-          </Grid>
-        </Grid>
-      </DockPanel>
+      </Border>
       
-      <Border Width="5" HorizontalAlignment="Right"  VerticalAlignment="Stretch" Background="Transparent" Cursor="SizeWestEast"   PointerPressed="Resize_Right"/>
-      <Border Width="5" HorizontalAlignment="Left"   VerticalAlignment="Stretch" Background="Transparent" Cursor="SizeWestEast"   PointerPressed="Resize_Left" />
-      <Border Height="5" VerticalAlignment="Bottom" HorizontalAlignment="Stretch" Background="Transparent" Cursor="SizeNorthSouth" PointerPressed="Resize_Bottom"/>
-      <Border Height="5" VerticalAlignment="Top"    HorizontalAlignment="Stretch" Background="Transparent" Cursor="SizeNorthSouth" PointerPressed="Resize_Top"/>
-      <Border Width="5" Height="5" HorizontalAlignment="Left"  VerticalAlignment="Top"    Background="Transparent" Cursor="TopLeftCorner" PointerPressed="Resize_TopLeft"/>
-      <Border Width="5" Height="5" HorizontalAlignment="Right" VerticalAlignment="Top"    Background="Transparent" Cursor="TopRightCorner" PointerPressed="Resize_TopRight"/>
-      <Border Width="5" Height="5" HorizontalAlignment="Left"  VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomLeftCorner" PointerPressed="Resize_BottomLeft"/>
-      <Border Width="5" Height="5" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomRightCorner" PointerPressed="Resize_BottomRight"/>
+      <Grid DockPanel.Dock="Top">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="200"/>
+          <ColumnDefinition Width="1"/>  
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        
+        <Border Grid.Column="0"
+                Background="{StaticResource SidePanelBrush}"
+                BorderBrush="{StaticResource PanelSeparatorBrush}"
+                BorderThickness="1,1,1,1">
+        <TreeView Grid.Column="0"
+                  ItemsSource="{Binding SolutionItems}"
+                  SelectedItem="{Binding SelectedSolutionItem}"
+                  DoubleTapped="SolutionTree_DoubleTapped">
+        </TreeView>
+        </Border>
+        <GridSplitter Grid.Column="1"
+                      Width="1"
+                      Background="Transparent"
+                      Cursor="SizeWestEast"
+                      ShowsPreview="True" />
+        <TabControl Grid.Column="2"
+                    x:Name="TabsHost"
+                    ItemsSource="{Binding Tabs}"
+                    SelectedItem="{Binding SelectedTab, Mode=TwoWay}">
+          <TabControl.ItemTemplate>
+            <DataTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Text="{Binding Title}" />
+                <Button Content="✕"
+                        Command="{Binding CloseCommand}"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Focusable="False"
+                        Padding="0"/>
+              </StackPanel>
+            </DataTemplate>
+          </TabControl.ItemTemplate>
+        </TabControl>
+      </Grid>
+    </DockPanel>
+    
+    <Border Width="10" HorizontalAlignment="Right"  VerticalAlignment="Stretch" Background="Transparent" Cursor="SizeWestEast" PointerPressed="Resize_Right"/>
+    <Border Width="10" HorizontalAlignment="Left"   VerticalAlignment="Stretch" Background="Transparent" Cursor="SizeWestEast" PointerPressed="Resize_Left" />
+    <Border Height="5" VerticalAlignment="Bottom" HorizontalAlignment="Stretch" Background="Transparent" Cursor="SizeNorthSouth" PointerPressed="Resize_Bottom"/>
+    <Border Height="10" VerticalAlignment="Top"    HorizontalAlignment="Stretch" Background="Transparent" Cursor="SizeNorthSouth" PointerPressed="Resize_Top"/>
+    <Border Width="10" Height="10" HorizontalAlignment="Left"  VerticalAlignment="Top"    Background="Transparent" Cursor="TopLeftCorner" PointerPressed="Resize_TopLeft"/>
+    <Border Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Top"    Background="Transparent" Cursor="TopRightCorner" PointerPressed="Resize_TopRight"/>
+    <Border Width="10" Height="10" HorizontalAlignment="Left"  VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomLeftCorner" PointerPressed="Resize_BottomLeft"/>
+    <Border Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomRightCorner" PointerPressed="Resize_BottomRight"/>
     </Grid>
   </Border>
 </Window>

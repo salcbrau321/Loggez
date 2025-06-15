@@ -1,12 +1,13 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Loggez.Core.Enums;
 using Loggez.Core.Interfaces;
 using Loggez.Core.Models;
-using Loggez.UI.ViewModels;
 using Lucene.Net.Analysis;
 using Lucene.Net.Documents;
 using Lucene.Net.Index;
@@ -16,7 +17,7 @@ using Lucene.Net.Util;
 
 namespace Loggez.Infrastructure.Indexing;
 
-public class IndexService : IIndexService
+public class IndexService : IIndexService, INotifyPropertyChanged
 {
     private readonly LuceneVersion _version = LuceneVersion.LUCENE_48;
     private readonly Lucene.Net.Store.Directory _directory;
@@ -31,6 +32,22 @@ public class IndexService : IIndexService
     private IndexSearcher _searcher;
     private List<LogFile> _indexedLogs = new();
 
+    private IndexState _indexState;
+    public IndexState IndexState
+    {
+        get => _indexState;
+        private set
+        {
+            if (_indexState == value) return;
+            _indexState = value;
+            OnPropertyChanged();
+        }
+    }
+    
+    public event PropertyChangedEventHandler PropertyChanged;
+    protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    
     public IndexService(string indexPath, IAnalyzerFactory analyzerFactory)
     {
         System.IO.Directory.CreateDirectory(indexPath);
@@ -38,9 +55,11 @@ public class IndexService : IIndexService
 
         _analyzer = analyzerFactory.Create("default");
     }
+    
 
     public async Task BuildIndexAsync(IEnumerable<LogFile> logs, IProgress<int> progress, CancellationToken cancellationToken = default)
     {
+        _indexState = IndexState.Indexing;
         _indexedLogs = logs.ToList();
 
         _writer?.Dispose();
@@ -82,10 +101,11 @@ public class IndexService : IIndexService
 
             _writer.Commit();
             _searcher = new IndexSearcher(DirectoryReader.Open(_directory));
+            _indexState = IndexState.Ready;
         }, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<HitViewModel>> SearchAsync(
+    public async Task<IReadOnlyList<SearchResult>> SearchAsync(
         string query,
         DateTime? fromDate,
         DateTime? toDate,
@@ -94,7 +114,7 @@ public class IndexService : IIndexService
         return await Task.Run(() =>
         {
             if (string.IsNullOrWhiteSpace(query) || _searcher == null)
-                return Array.Empty<HitViewModel>();
+                return Array.Empty<SearchResult>();
             
             var termText = query.ToLowerInvariant();
             var termQ    = new TermQuery(new Term(_substrField, termText));
@@ -116,7 +136,7 @@ public class IndexService : IIndexService
             }
 
             var top = _searcher.Search(finalQ, _indexedLogs.Count * 1000);
-            var results = new List<HitViewModel>();
+            var results = new List<SearchResult>();
 
             foreach (var sd in top.ScoreDocs)
             {
@@ -130,12 +150,10 @@ public class IndexService : IIndexService
                 var lf = _indexedLogs.First(l => l.Path == path);
                 var e  = lf.Entries.First(x => x.LineNumber == ln && x.RawLine == raw);
 
-                results.Add(new HitViewModel(lf, e, query, StringComparison.OrdinalIgnoreCase));
+                results.Add(new SearchResult(lf, e, query, StringComparison.OrdinalIgnoreCase));
             }
 
-            return (IReadOnlyList<HitViewModel>)results;
+            return (IReadOnlyList<SearchResult>)results;
         }, cancellationToken);
     }
-
-    public void Dispose() => _writer?.Dispose();
 }

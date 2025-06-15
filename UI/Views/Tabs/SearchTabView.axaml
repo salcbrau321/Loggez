@@ -1,0 +1,104 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Loggez.UI.ViewModels.Tabs.Search"
+             xmlns:behav="using:Loggez.UI.Behaviors"
+             xmlns:conv="using:Loggez.UI.Converters"
+             xmlns:ae="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
+             x:Class="Loggez.UI.Views.Tabs.SearchTabView"
+             x:DataType="vm:SearchTabViewModel">
+
+    <UserControl.Resources>
+        <conv:UtcLocalDateConverter x:Key="UtcLocalDateConverter"/>
+    </UserControl.Resources>
+  
+    <UserControl.DataTemplates>
+        <TreeDataTemplate
+            DataType="vm:FileHitGroupViewModel"
+            ItemsSource="{Binding Hits}">
+          <StackPanel Orientation="Horizontal" Spacing="2">
+            <TextBlock>
+              <Run Text="{Binding FileName}" />            
+              <Run Text="{Binding FileDate, StringFormat=' - {0}'}"/>
+            </TextBlock>
+          </StackPanel>
+        </TreeDataTemplate>
+
+        <DataTemplate 
+          DataType="vm:HitViewModel">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock>
+                <Run Text="{Binding DisplayLineNumber}" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
+                <Run Text=": "/>
+                <Run Text="{Binding PreviewBefore}" />
+                <Run Text="{Binding PreviewMatch}" Foreground="Red" />
+                <Run Text="{Binding PreviewAfter}" />
+              </TextBlock>
+            </StackPanel>
+        </DataTemplate>
+    </UserControl.DataTemplates>
+    <DockPanel>
+      <Grid DockPanel.Dock="Top" Margin="8" IsEnabled="{Binding CanSearch}">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="3*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+
+          <TextBox
+            x:Name="SearchBox"
+            Grid.Column="0"
+            Watermark="Search text…"
+            Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
+            Margin="0,0,12,0"
+            IsEnabled="{Binding CanSearch}" />
+
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,12,0">
+            <TextBlock Text="From" VerticalAlignment="Center" Margin="0,0,4,0" Foreground="{DynamicResource ForegroundBrush}" />
+            <CalendarDatePicker
+              SelectedDate="{Binding FromDate, Mode=TwoWay, Converter={StaticResource UtcLocalDateConverter}}"
+              Width="120" />
+            <TextBlock Text="to" VerticalAlignment="Center" Margin="8,0,4,0" Foreground="{DynamicResource ForegroundBrush}" />
+            <CalendarDatePicker
+              SelectedDate="{Binding ToDate, Mode=TwoWay, Converter={StaticResource UtcLocalDateConverter}}"
+              Width="120" />
+          </StackPanel>
+        </Grid>
+
+        <TextBlock
+          DockPanel.Dock="Top"
+          Text="{Binding DateRangeErrorMessage}"
+          Foreground="Red"
+          Margin="8,0,8,4"
+          IsVisible="{Binding HasDateRangeError}" />
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="{Binding LeftPaneWidth, Mode=TwoWay}" MinWidth="200"/>
+            <ColumnDefinition Width="5"/>
+            <ColumnDefinition Width="*" MinWidth="200"/>
+          </Grid.ColumnDefinitions>
+
+          <TreeView
+            x:Name="HitsTree"
+            Grid.Column="0"
+            ItemsSource="{Binding FileHitGroups}"
+            SelectedItem="{Binding SelectedHit, Mode=TwoWay}" />
+
+          <GridSplitter
+            Grid.Column="1"
+            ShowsPreview="True" />
+
+          <Grid Grid.Column="2">
+            <ae:TextEditor
+              x:Name="Editor"
+              IsReadOnly="True"
+              ShowLineNumbers="True"
+              VerticalScrollBarVisibility="Auto"
+              HorizontalScrollBarVisibility="Auto">
+              <Interaction.Behaviors>
+                <behav:HighlightBehavior SearchQuery="{Binding SearchQuery, Mode=TwoWay}" />
+                <behav:DocumentTextBindingBehavior Text="{Binding SelectedHitContent, Mode=TwoWay}" />
+              </Interaction.Behaviors>
+            </ae:TextEditor>
+          </Grid>
+        </Grid>
+    </DockPanel>
+</UserControl>

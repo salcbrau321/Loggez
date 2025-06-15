@@ -9,7 +9,13 @@
     <Color x:Key="BorderColor">#E1E1E1</Color>
     <Color x:Key="HoverColor">#E1E4E8</Color>
     <Color x:Key="SelectionBackground">#CCE5FF</Color>
+    <Color x:Key="AccentColor">#007ACC</Color>
+    <Color x:Key="SidePanelBackground">#F3F3F3</Color>
+    <Color x:Key="PanelSeparatorColor">#E1E1E1</Color>
     
+    <SolidColorBrush x:Key="PanelSeparatorBrush" Color="{StaticResource PanelSeparatorColor}" />
+    <SolidColorBrush x:Key="SidePanelBrush" Color="{StaticResource SidePanelBackground}" />
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
     <SolidColorBrush x:Key="BackgroundBrush"    Color="{StaticResource LightBackground}" />
     <SolidColorBrush x:Key="SideBarBrush"       Color="{StaticResource SideBarBackground}" />
     <SolidColorBrush x:Key="TitleBarBrush"      Color="{StaticResource TitleBarBackground}" />  <!-- ← Uses #F6F6F6 -->
@@ -18,6 +24,41 @@
     <SolidColorBrush x:Key="HoverBrush"         Color="{StaticResource HoverColor}" />
     <SolidColorBrush x:Key="SelectionBrush"     Color="{StaticResource SelectionBackground}" />
   </Styles.Resources>
+  
+  <Style Selector="TabControl">
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="Background" Value="{StaticResource TitleBarBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+  </Style>
+
+  <Style Selector="TabControl">
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="Background" Value="{StaticResource TitleBarBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+  </Style>
+
+  <Style Selector="TabItem">
+    <Setter Property="Padding" Value="8,2"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="MinHeight" Value="28"/>
+    <Setter Property="Background" Value="{StaticResource TitleBarBrush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource PanelSeparatorBrush}" />
+    <Setter Property="BorderThickness" Value="1,1,1,0"/>
+    <Setter Property="CornerRadius" Value="4,4,0,0"/>
+    <Setter Property="Margin" Value="2,0,0,0"/>
+  </Style>
+
+  <Style Selector="TabItem:selected">
+    <Setter Property="Background" Value="{StaticResource BackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+    <Setter Property="BorderThickness" Value="1,1,1,0"/>
+  </Style>
+
+  <Style Selector="TabItem:pointerover">
+    <Setter Property="Background" Value="{StaticResource HoverBrush}" />
+  </Style>
   
   <Style Selector="Window">
     <Setter Property="Background" Value="{StaticResource BackgroundBrush}" />

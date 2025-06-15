@@ -15,6 +15,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Loggez.Core.Interfaces;
 using Loggez.Core.Models;
+using Loggez.UI.ViewModels.Tabs;
+using Loggez.UI.ViewModels.Tabs.Search;
 using Loggez.UI.Views;
 
 namespace Loggez.UI.ViewModels
@@ -25,31 +27,27 @@ namespace Loggez.UI.ViewModels
         private readonly IFileLoaderService _loader;
         private readonly IIndexService _indexer;
         private readonly IExternalOpener _opener;
-        private readonly DispatcherTimer _searchDebounceTimer;
-
         private readonly List<LogFile> _logs = new();
-
+        
+        private ObservableCollection<SolutionItemViewModel> _solutionItems =  new ObservableCollection<SolutionItemViewModel>();
+        
         public ObservableCollection<string> LoadedFiles { get; } = new();
-        public ObservableCollection<HitViewModel> Hits { get; } = new();
-        public ObservableCollection<FileHitGroupViewModel> FileHitGroups { get; } = new();
+        public ObservableCollection<SolutionItemViewModel> SolutionItems
+        {
+            get => _solutionItems;
+            private set => SetProperty(ref _solutionItems, value);
+        }
+        [ObservableProperty] private ITabViewModel _selectedTab;
 
-        [ObservableProperty] private string _searchQuery = "";
-        [ObservableProperty] private DateTime? _fromDate    = null;
-        [ObservableProperty] private DateTime? _toDate      = null;
-        [ObservableProperty] private HitViewModel? _selectedHit = null;
-        [ObservableProperty] private FileHitGroupViewModel? _selectedHitGroup = null;
-        [ObservableProperty] private bool _isIndexing;
-        [ObservableProperty] private bool _isIndexReady;
-        [ObservableProperty] private bool _canOpenExternal;
-        [ObservableProperty] private string _selectedHitContent = "";
-        [ObservableProperty] private TextDocument _selectedHitDocument = new TextDocument(string.Empty);
-
-        public bool CanSearch => IsIndexReady && !IsIndexing;
-        public bool HasDateRangeError => FromDate.HasValue && ToDate.HasValue && FromDate > ToDate;
-        public string DateRangeErrorMessage => HasDateRangeError
-            ? "❗ Start date must be on or before End date."
-            : "";
-
+        private SolutionItemViewModel _selectedSolutionItem;
+        public SolutionItemViewModel SelectedSolutionItem
+        {
+            get => _selectedSolutionItem;
+            set => SetProperty(ref _selectedSolutionItem, value);
+        }
+        
+        public ObservableCollection<ITabViewModel> Tabs { get; }  = new ObservableCollection<ITabViewModel>();
+        
         public MainWindowViewModel(
             IDialogService     dialog,
             IFileLoaderService loader,
@@ -60,58 +58,79 @@ namespace Loggez.UI.ViewModels
             _loader   = loader;
             _indexer  = indexer;
             _opener   = opener;
-
-            _searchDebounceTimer = new DispatcherTimer
+            
+            Action<ITabViewModel> close = tab =>
             {
-                Interval = TimeSpan.FromMilliseconds(300)
+                if (tab is SearchTabViewModel) return; // never close search
+                Tabs.Remove(tab);
+                if (SelectedTab == tab)
+                    SelectedTab = Tabs[0];
             };
-            _searchDebounceTimer.Tick += (_, __) =>
-            {
-                _searchDebounceTimer.Stop();
-                SearchCommand.Execute(null);
-            };
+            var title = $"Search {Tabs.Count(t => t is SearchTabViewModel) + 1}";
+            var searchTab = new SearchTabViewModel(_indexer, _opener);
+            searchTab.RequestClose += CloseTab;
+            
+            Tabs.Add(searchTab);
+            SelectedTab = searchTab;
         }
 
-        partial void OnSelectedHitGroupChanged(FileHitGroupViewModel? oldGroup, FileHitGroupViewModel? newGroup)
+        private void CloseTab(object? sender, EventArgs eventArgs)
         {
-            if (newGroup?.Hits.Count > 0) SelectedHit = newGroup.Hits[0];
+            ITabViewModel tab = sender as ITabViewModel;
+            Tabs.Remove(tab);
+            if (SelectedTab == tab && Tabs.Count > 0)
+                SelectedTab = Tabs[0];
         }
         
-        partial void OnIsIndexingChanged(bool oldValue, bool newValue)
-            => OnPropertyChanged(nameof(CanSearch));
-
-        partial void OnIsIndexReadyChanged(bool oldValue, bool newValue)
-            => OnPropertyChanged(nameof(CanSearch));
-        
-        partial void OnSearchQueryChanged(string oldVal, string newVal)
+        private async Task LoadSolutionTreeAsync(string[] inputs)
         {
-            _searchDebounceTimer.Stop();
-            _searchDebounceTimer.Start();
+            await Task.Run(() =>
+            {
+                var roots = inputs.Select(path =>
+                {
+                    if (Directory.Exists(path))
+                    {
+                        return (SolutionItemViewModel)BuildFolderNode(new DirectoryInfo(path));
+                    }
+                    else
+                    {
+                        return (SolutionItemViewModel)new SolutionFileViewModel(path);
+                    }
+                });
+
+                SolutionItems = new ObservableCollection<SolutionItemViewModel>(roots);
+                OnPropertyChanged(nameof(SolutionItems));
+            });
         }
         
-        partial void OnSelectedHitChanged(HitViewModel? _, HitViewModel? newVal)
+        private SolutionFolderViewModel BuildFolderNode(DirectoryInfo dir)
         {
-            if (newVal is null)
-            {
-                SelectedHitContent  = string.Empty;
-                SelectedHitDocument = new TextDocument(string.Empty);
-                CanOpenExternal     = false;
-            }
-            else
-            {
-                var fullText = File.ReadAllText(newVal.FullPath);
-                SelectedHitContent  = fullText;
-                SelectedHitDocument = new TextDocument(fullText);
-                CanOpenExternal     = true;
-            }
+            var childFolders = dir
+                .EnumerateDirectories()
+                .Select(sub => BuildFolderNode(sub));
+            
+            var childFiles = dir
+                .EnumerateFiles()
+                .Select(f => new SolutionFileViewModel(f.FullName));
+            
+            var allChildren = childFolders
+                .Cast<SolutionItemViewModel>()
+                .Concat(childFiles);
+
+            return new SolutionFolderViewModel(dir.FullName, allChildren);
         }
         
-        partial void OnFromDateChanged(DateTime? oldVal, DateTime? newVal)
-            => SearchCommand.Execute(null);
-
-        partial void OnToDateChanged(DateTime? oldVal, DateTime? newVal)
-            => SearchCommand.Execute(null);
-
+        private IEnumerable<SolutionItemViewModel> BuildFolder(DirectoryInfo dir)
+        {
+            yield return new SolutionFolderViewModel(
+                dir.FullName,
+                dir.GetDirectories().SelectMany(BuildFolder)
+                    .Concat(dir.GetFiles().Select(f => new SolutionFileViewModel(f.FullName)))
+            );
+        }
+        
+        public IRelayCommand<ITabViewModel> CloseTabCommand { get; }
+        
         [RelayCommand]
         private void MinimizeWindow()
         {
@@ -119,6 +138,19 @@ namespace Loggez.UI.ViewModels
                 desktop.MainWindow.WindowState = WindowState.Minimized;
         }
 
+        [RelayCommand]
+        private void OpenLogFileTab(SolutionItemViewModel item)
+        {
+            if (item is SolutionFileViewModel file)
+            {
+                var path = file.FullPath; // assume FullPath property exists
+                var tab  = new LogFileTabViewModel(path);
+                tab.RequestClose += CloseTab;
+                Tabs.Add(tab);
+                SelectedTab = tab;
+            }
+        }
+        
         [RelayCommand]
         private void MaximizeRestoreWindow()
         {
@@ -139,17 +171,16 @@ namespace Loggez.UI.ViewModels
         }
         
         [RelayCommand]
-        private void Clear()
+        private void OpenSearchTab()
         {
-            _logs.Clear();
-            LoadedFiles.Clear();
-            Hits.Clear();
-            FileHitGroups.Clear();
-            SelectedHit = null;
-            IsIndexReady = false;
-            SelectedHitContent = "";
+            var title = $"Search {Tabs.Count(t => t is SearchTabViewModel) + 1}";
+            var newTab = new SearchTabViewModel(_indexer, _opener, title);
+            newTab.CloseRequested += CloseTab;
+            
+            Tabs.Add(newTab);
+            SelectedTab = newTab;
         }
-
+        
         [RelayCommand]
         private void Exit()
         {
@@ -218,12 +249,6 @@ namespace Loggez.UI.ViewModels
         {
             _logs.Clear();
             LoadedFiles.Clear();
-            Hits.Clear();
-            FileHitGroups.Clear();
-            SelectedHit = null;
-            IsIndexing  = true;
-            IsIndexReady = false;
-            SelectedHitContent = "";
             
             var logs = await _loader.LoadAsync(inputs);
             foreach (var lf in logs)
@@ -240,90 +265,9 @@ namespace Loggez.UI.ViewModels
             dlg.Show((Application.Current.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow);
             
             await _indexer.BuildIndexAsync(logs, progress, CancellationToken.None);
-
+            await LoadSolutionTreeAsync(inputs);
+            
             dlg.Close();
-            IsIndexing = false;
-            IsIndexReady = true;
-
-            if (!string.IsNullOrWhiteSpace(SearchQuery))
-                SearchCommand.Execute(null);
-        }
-
-        [RelayCommand(CanExecute = nameof(CanSearch))]
-        private async Task Search()
-        {
-            Hits.Clear();
-            FileHitGroups.Clear();
-
-            var results = await _indexer.SearchAsync(SearchQuery, FromDate, ToDate);
-            var newGroups = results
-                .GroupBy(h => h.FullPath)
-                .ToDictionary(g => g.Key, g => g.ToList());
-            
-            var prevSelectedPath = SelectedHitGroup?.FileName;
-
-            for (int i = FileHitGroups.Count - 1; i >= 0; i--)
-            {
-                var grp = FileHitGroups[i];
-                if (!newGroups.ContainsKey(grp.FileName))
-                    FileHitGroups.RemoveAt(i);
-            }
-
-            foreach (var kv in newGroups)
-            {
-                var path     = kv.Key;
-                var newHits  = kv.Value;
-                var existing = FileHitGroups.FirstOrDefault(f => f.FileName == path);
-
-                if (existing != null)
-                {
-                    existing.Hits.Clear();
-                    foreach (var hit in newHits)
-                        existing.Hits.Add(hit);
-                }
-                else
-                {
-                    FileHitGroups.Add(new FileHitGroupViewModel(path, newHits));
-                }
-            }
-
-            if (prevSelectedPath != null)
-            {
-                var want = FileHitGroups.FirstOrDefault(f => f.FileName == prevSelectedPath);
-                if (want != null)
-                {
-                    SelectedHitGroup = want;
-                    return;
-                }
-            }
-            
-            if (FileHitGroups.Count > 0)
-                SelectedHitGroup = FileHitGroups[0];
-            else
-                SelectedHitGroup = null;
-        }
-
-        [RelayCommand(CanExecute = nameof(CanOpenExternal))]
-        private void OpenExternal()
-        {
-            if (SelectedHit == null) return;
-            _opener.Open(SelectedHit.FullPath, SelectedHit.LineNumber);
-        }
-
-        [RelayCommand]
-        private void OpenHit(HitViewModel hit)
-        {
-            if (hit == null) return;
-
-            var path = hit.FullPath;
-            if (OperatingSystem.IsWindows())
-                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-            else if (OperatingSystem.IsLinux())
-                Process.Start("xdg-open", path);
-            else if (OperatingSystem.IsMacOS())
-                Process.Start("open", path);
-            else
-                throw new PlatformNotSupportedException();
         }
     }
 }

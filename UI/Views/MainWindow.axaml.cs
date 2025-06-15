@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Loggez.UI.Behaviors;
 using Lucene.Net.Util.Packed;
@@ -9,10 +10,10 @@ namespace Loggez.UI.Views;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Loggez.UI.ViewModels;
+using Avalonia.VisualTree;
 
 public partial class MainWindow : Window
 {
-    private readonly SearchColorizer _searchColorizer;
     private bool _ignoreDrag = false;
     
     public MainWindow() => this.InitializeComponent();
@@ -21,12 +22,6 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = vm;
-        _searchColorizer =  new SearchColorizer();
-        Editor.TextArea.TextView.LineTransformers.Add(_searchColorizer);
-        if (DataContext is INotifyPropertyChanged viewModel)
-        {
-            vm.PropertyChanged += ViewModel_PropertyChanged;
-        }
         this.FindControl<Border>("TitleBar").PointerPressed += TitleBar_PointerPressed;
     }
     
@@ -51,37 +46,25 @@ public partial class MainWindow : Window
         }
     }
     
-    private void ViewModel_PropertyChanged(object sender, PropertyChangedEventArgs e)
+    private void SolutionTree_DoubleTapped(object? sender, RoutedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainWindowViewModel.SearchQuery))
+        if (!(e.Source is Control sourceControl))
+            return;
+        
+        Control? current = sourceControl;
+        while (current is not TreeViewItem && current != null)
         {
-            RefreshHighlights();
-        } 
-        if (e.PropertyName == nameof(MainWindowViewModel.SelectedHit))
-        {
-            Dispatcher.UIThread.InvokeAsync(ScrollToCurrentHit, DispatcherPriority.Background);
+            current = current.Parent as Control;
         }
-    }
-    
-    private void ScrollToCurrentHit()
-    {
-        var vm = DataContext as MainWindowViewModel;
-        var hit = vm?.SelectedHit;
-        var doc = Editor.Document; 
-        if (hit == null || doc == null)
-            return;
-        if (hit.LineNumber < 1 || hit.LineNumber > doc.LineCount)
-            return;
-        var offset = doc.GetOffset(hit.LineNumber, 1);
-        Editor.TextArea.Caret.Offset = offset;
-        Editor.TextArea.Caret.BringCaretToView();
-    }
 
-    private void RefreshHighlights()
-    {
-        var vm = (MainWindowViewModel)DataContext;
-        _searchColorizer.SearchTerm = vm.SearchQuery ?? string.Empty;
-        Editor.TextArea.TextView.Redraw();
+        if (current is TreeViewItem tvi &&
+            tvi.DataContext is SolutionFileViewModel fileVm)
+        {
+            (DataContext as MainWindowViewModel)?
+                .OpenLogFileTabCommand.Execute(fileVm);
+
+            e.Handled = true;
+        }
     }
     
     private void Resize_Right(object? sender, PointerPressedEventArgs e)
